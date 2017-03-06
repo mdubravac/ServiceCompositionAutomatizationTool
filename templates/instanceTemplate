@@ -1,0 +1,92 @@
+heat_template_version: 2013-05-23
+
+description: Template that creates an instance.
+
+parameters:
+  image:
+    type: string
+    label: Image name or ID
+    description: Image to be used for server. Please use an Ubuntu based image.
+  flavor:
+    type: string
+    label: Flavor
+    description: Type of instance (flavor) to be used on the compute instance.
+  key:
+    type: string
+    label: Key name
+    description: Name of key-pair to be installed on the compute instance.
+  private_network:
+    type: string
+    label: Private network name or ID
+    description: Network to attach server to.
+  public_network:
+    type: string
+    label: Public network name or ID
+    description: Network to attach server to.
+  security_group:
+    type: string
+    label: LAMP security group
+    description: Name of LAMP security group
+  instanceX_ip:
+    type: string
+    label: php service server
+    description: IP address of the php service server.
+
+resources:
+  wait_condition:
+    type: OS::Heat::WaitCondition
+    properties:
+      handle: { get_resource: wh }
+      count: 1
+      timeout: 3600
+
+  wh:
+    type: OS::Heat::WaitConditionHandle
+
+  port:
+    type: OS::Neutron::Port
+    properties:
+      network: { get_param: private_network }
+      security_groups:
+        - { get_param: security_group }
+        - default
+
+  instanceX:
+    type: OS::Nova::Server
+    properties:
+      image: { get_param: image }
+      flavor: { get_param: flavor }
+      key_name: { get_param: key }
+      networks:
+        - port: { get_resource: port }
+      user_data_format: RAW
+      user_data:
+        str_replace:
+          params:
+            __service_ipX__: { get_param: instanceX_ip }
+            wc_notify: { get_attr: ['wh', 'curl_cli'] }
+          template: |
+            #!/bin/bash
+            cd /var/www/html/
+            echo "__service_ipX__" >> serviceIP.txt
+            # notify heat that we are done here
+            wc_notify --data-binary '{"status": "SUCCESS"}'
+
+  floating_ip:
+    type: OS::Neutron::FloatingIP
+    properties:
+      floating_network: { get_param: public_network }
+
+  floating_ip_assoc:
+    type: OS::Neutron::FloatingIPAssociation
+    properties:
+      floatingip_id: { get_resource: floating_ip }
+      port_id: { get_resource: port }
+
+outputs:
+  name:
+    description: Name of the ServerX instance.
+    value: { get_attr: [instanceX, name] }
+  ip:
+    description: The IP address of the ServerX instance.
+    value: { get_attr: [floating_ip, floating_ip_address] }

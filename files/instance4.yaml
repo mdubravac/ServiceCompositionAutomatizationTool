@@ -1,0 +1,147 @@
+heat_template_version: 2013-05-23
+
+description: Template that creates an instance.
+
+parameters:
+  image:
+    type: string
+    label: Image name or ID
+    description: Image to be used for server. Please use an Ubuntu based image.
+  flavor:
+    type: string
+    label: Flavor
+    description: Type of instance (flavor) to be used on the compute instance.
+  key:
+    type: string
+    label: Key name
+    description: Name of key-pair to be installed on the compute instance.
+  private_network:
+    type: string
+    label: Private network name or ID
+    description: Network to attach server to.
+  public_network:
+    type: string
+    label: Public network name or ID
+    description: Network to attach server to.
+  security_group:
+    type: string
+    label: LAMP security group
+    description: Name of LAMP security group
+  instance1_ip:
+    type: string
+    label: php service server
+    description: IP address of the php service 1 server.
+
+resources:
+  wait_condition:
+    type: OS::Heat::WaitCondition
+    properties:
+      handle: { get_resource: wh }
+      count: 1
+      timeout: 3600
+
+  wh:
+    type: OS::Heat::WaitConditionHandle
+
+  port:
+    type: OS::Neutron::Port
+    properties:
+      network: { get_param: private_network }
+      security_groups:
+        - { get_param: security_group }
+        - default
+
+  instance4:
+    type: OS::Nova::Server
+    properties:
+      image: { get_param: image }
+      flavor: { get_param: flavor }
+      key_name: { get_param: key }
+      networks:
+        - port: { get_resource: port }
+      user_data_format: RAW
+      user_data:
+        str_replace:
+          params:
+            __service_ip1__: { get_param: instance1_ip }
+            wc_notify: { get_attr: ['wh', 'curl_cli'] }
+          template: |
+            #!/bin/bash
+            apt-get -y install lamp-server^
+            cd /var/www/html/
+            wget --no-check-certificate https://raw.githubusercontent.com/nikoladom91/ARIKS2016/master/Skripte/Heat/resursi/nusoap.php
+            echo "__service_ip1__" >> serviceIP.txt
+            echo "<?php" >> service4.php
+            echo "require_once "nusoap.php";" >> service4.php
+            echo "" >> service4.php
+            echo "function checkService($input) {" >> service4.php
+            echo "	if (file_exists('./serviceIP.txt')) {" >> service4.php
+            echo "        	$serviceIP = explode("\n", file_get_contents('./serviceIP.txt'));" >> service4.php
+            echo "        	$serviceIP = explode("\n", file_get_contents('./serviceIP.txt'));" >> service4.php
+            echo "	}" >> service4.php
+            echo "        $result = "service4"" >> service4.php
+            echo "        return $result;" >> service4.php
+            echo "}" >> service4.php
+            echo "" >> service4.php
+            echo "$input = "service4"" >> service4.php
+            echo "" >> service4.php
+            echo "if (file_exists('./serviceIP.txt')) {" >> service4.php
+            echo "        $serviceIP = explode("\n", file_get_contents('./serviceIP.txt'));" >> service4.php
+            echo "        $service1 = new nusoap_client("http://" . $serviceIP[0] . "/service1.php?wsdl", true)" >> service4.php
+            echo "}" >> service4.php
+            echo "" >> service4.php
+            echo "$error1 = $service1->getError()" >> service4.php
+            echo "if ($error1) " >> service4.php
+            echo "        echo "Constructor error: " . $error1 . "\n";
+}" >> service4.php
+            echo "$result1 = $service1->call("checkService", array("input" => $input));" >> service4.php
+            echo "if ($service1->fault) " >> service4.php
+            echo "        echo "Fault: "" >> service4.php
+            echo "        print_r($result1)" >> service4.php
+            echo "} else " >> service4.php
+            echo "        $error1 = $service1->getError()" >> service4.php
+            echo "        if ($error1) " >> service4.php
+            echo "        echo "Error: " . $error1 . "\n"" >> service4.php
+            echo "        } else " >> service4.php
+            echo "        echo $input . " poziva " . $result1 . "\n";
+        }
+}" >> service4.php
+            echo "$server = new soap_server();" >> service4.php
+            echo "$server->configureWSDL("status", "urn:status");" >> service4.php
+            echo "" >> service4.php
+            echo "$server->register("checkService"," >> service4.php
+            echo "    array("input" => "xsd:string")," >> service4.php
+            echo "    array("return" => "xsd:string")," >> service4.php
+            echo "    "urn:status"," >> service4.php
+            echo "    "urn:status#checkService"," >> service4.php
+            echo "    "rpc"," >> service4.php
+            echo "    "encoded"," >> service4.php
+            echo "    "Check if service is working by passing your name");" >> service4.php
+            echo "" >> service4.php
+            echo "$server->service($HTTP_RAW_POST_DATA);" >> service4.php
+            echo "?>" >> service4.php
+            echo "" >> service4.php
+            echo "" >> service4.php
+            echo "" >> service4.php
+            echo "" >> service4.php
+            # notify heat that we are done here
+            wc_notify --data-binary '{"status": "SUCCESS"}'
+
+  floating_ip:
+    type: OS::Neutron::FloatingIP
+    properties:
+      floating_network: { get_param: public_network }
+
+  floating_ip_assoc:
+    type: OS::Neutron::FloatingIPAssociation
+    properties:
+      floatingip_id: { get_resource: floating_ip }
+      port_id: { get_resource: port }
+
+outputs:
+  name:
+    description: Name of the Server4 instance.
+    value: { get_attr: [instance4, name] }
+  ip:
+    description: The IP address of the Server4 instance.
+    value: { get_attr: [floating_ip, floating_ip_address] }

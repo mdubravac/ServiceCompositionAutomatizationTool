@@ -1,0 +1,149 @@
+heat_template_version: 2013-05-23
+
+description: Template that creates an instance.
+
+parameters:
+  image:
+    type: string
+    label: Image name or ID
+    description: Image to be used for server. Please use an Ubuntu based image.
+  flavor:
+    type: string
+    label: Flavor
+    description: Type of instance (flavor) to be used on the compute instance.
+  key:
+    type: string
+    label: Key name
+    description: Name of key-pair to be installed on the compute instance.
+  private_network:
+    type: string
+    label: Private network name or ID
+    description: Network to attach server to.
+  public_network:
+    type: string
+    label: Public network name or ID
+    description: Network to attach server to.
+  security_group:
+    type: string
+    label: LAMP security group
+    description: Name of LAMP security group
+  instance3_ip:
+    type: string
+    label: php service server
+    description: IP address of the php service 3 server.
+
+resources:
+  wait_condition:
+    type: OS::Heat::WaitCondition
+    properties:
+      handle: { get_resource: wh }
+      count: 1
+      timeout: 3600
+
+  wh:
+    type: OS::Heat::WaitConditionHandle
+
+  port:
+    type: OS::Neutron::Port
+    properties:
+      network: { get_param: private_network }
+      security_groups:
+        - { get_param: security_group }
+        - default
+
+  instance2:
+    type: OS::Nova::Server
+    properties:
+      image: { get_param: image }
+      flavor: { get_param: flavor }
+      key_name: { get_param: key }
+      networks:
+        - port: { get_resource: port }
+      user_data_format: RAW
+      user_data:
+        str_replace:
+          params:
+            __service_ip3__: { get_param: instance3_ip }
+            wc_notify: { get_attr: ['wh', 'curl_cli'] }
+          template: |
+            #!/bin/bash
+            sudo debconf-set-selections <<< 'lamp-server^ mysql-server/root_password password grad'
+            sudo debconf-set-selections <<< 'lamp-server^ mysql-server/root_password_again password grad'
+            apt-get -y install lamp-server^
+            cd /var/www/html/
+            wget --no-check-certificate https://raw.githubusercontent.com/nikoladom91/ARIKS2016/master/Skripte/Heat/resursi/nusoap.php
+            echo "__service_ip3__" >> serviceIP.txt
+            echo "<?php" >> service2.php
+            echo "require_once "nusoap.php";" >> service2.php
+            echo "" >> service2.php
+            echo "function checkService($input) {" >> service2.php
+            echo "	if (file_exists('./serviceIP.txt')) {" >> service2.php
+            echo "        	$serviceIP = explode("\n", file_get_contents('./serviceIP.txt'));" >> service2.php
+            echo "        	$serviceIP = explode("\n", file_get_contents('./serviceIP.txt'));" >> service2.php
+            echo "	}" >> service2.php
+            echo "        $result = "service2"" >> service2.php
+            echo "        return $result;" >> service2.php
+            echo "}" >> service2.php
+            echo "" >> service2.php
+            echo "$input = "service2"" >> service2.php
+            echo "" >> service2.php
+            echo "if (file_exists('./serviceIP.txt')) {" >> service2.php
+            echo "        $serviceIP = explode("\n", file_get_contents('./serviceIP.txt'));" >> service2.php
+            echo "        $service3 = new nusoap_client("http://" . $serviceIP[0] . "/service3.php?wsdl", true)" >> service2.php
+            echo "}" >> service2.php
+            echo "" >> service2.php
+            echo "$error3 = $service3->getError()" >> service2.php
+            echo "if ($error3) " >> service2.php
+            echo "        echo "Constructor error: " . $error3 . "\n";
+}" >> service2.php
+            echo "$result3 = $service3->call("checkService", array("input" => $input));" >> service2.php
+            echo "if ($service3->fault) " >> service2.php
+            echo "        echo "Fault: "" >> service2.php
+            echo "        print_r($result3)" >> service2.php
+            echo "} else " >> service2.php
+            echo "        $error3 = $service3->getError()" >> service2.php
+            echo "        if ($error3) " >> service2.php
+            echo "        echo "Error: " . $error3 . "\n"" >> service2.php
+            echo "        } else " >> service2.php
+            echo "        echo $input . " poziva " . $result3 . "\n";
+        }
+}" >> service2.php
+            echo "$server = new soap_server();" >> service2.php
+            echo "$server->configureWSDL("status", "urn:status");" >> service2.php
+            echo "" >> service2.php
+            echo "$server->register("checkService"," >> service2.php
+            echo "    array("input" => "xsd:string")," >> service2.php
+            echo "    array("return" => "xsd:string")," >> service2.php
+            echo "    "urn:status"," >> service2.php
+            echo "    "urn:status#checkService"," >> service2.php
+            echo "    "rpc"," >> service2.php
+            echo "    "encoded"," >> service2.php
+            echo "    "Check if service is working by passing your name");" >> service2.php
+            echo "" >> service2.php
+            echo "$server->service($HTTP_RAW_POST_DATA);" >> service2.php
+            echo "?>" >> service2.php
+            echo "" >> service2.php
+            echo "" >> service2.php
+            echo "" >> service2.php
+            echo "" >> service2.php
+            # notify heat that we are done here
+            wc_notify --data-binary '{"status": "SUCCESS"}'
+
+  floating_ip:
+    type: OS::Neutron::FloatingIP
+    properties:
+      floating_network: { get_param: public_network }
+
+  floating_ip_assoc:
+    type: OS::Neutron::FloatingIPAssociation
+    properties:
+      floatingip_id: { get_resource: floating_ip }
+      port_id: { get_resource: port }
+
+outputs:
+  name:
+    description: Name of the Server2 instance.
+    value: { get_attr: [instance2, name] }
+  ip:
+    description: The IP address of the Server2 instance.
+    value: { get_attr: [floating_ip, floating_ip_address] }
